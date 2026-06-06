@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Mafia</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background: #fff; color: #000;
+  font-family: 'Courier New', Courier, monospace;
+  min-height: 100vh; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; padding: 28px 20px;
+}
+#app { width: 100%; max-width: 380px; }
+h1 { font-size: 1.3rem; letter-spacing: 0.15em; text-transform: uppercase; margin-bottom: 28px; text-align: center; }
+.screen { display: none; flex-direction: column; gap: 14px; }
+.screen.active { display: flex; }
+label { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.1em; display: block; margin-bottom: 5px; }
+input[type="text"] {
+  width: 100%; border: 2px solid #000; background: #fff; color: #000;
+  font-family: 'Courier New', Courier, monospace; font-size: 1rem;
+  padding: 10px 12px; outline: none;
+}
+input[type="text"]:focus { background: #f5f5f5; }
+button {
+  width: 100%; border: 2px solid #000; background: #000; color: #fff;
+  font-family: 'Courier New', Courier, monospace; font-size: 0.85rem;
+  text-transform: uppercase; letter-spacing: 0.12em; padding: 12px; cursor: pointer;
+}
+button:hover { background: #222; }
+button.ghost { background: #fff; color: #000; }
+button.ghost:hover { background: #f0f0f0; }
+.divider { display: flex; align-items: center; gap: 10px; font-size: 0.75rem; color: #888; }
+.divider::before, .divider::after { content: ''; flex: 1; border-top: 1px solid #ccc; }
+.box { border: 2px solid #000; padding: 16px; }
+.player-list { list-style: none; }
+.player-list li { padding: 8px 0; border-bottom: 1px solid #ddd; font-size: 0.9rem; }
+.player-list li:last-child { border-bottom: none; }
+.code-big { font-size: 2.5rem; font-weight: bold; letter-spacing: 0.4em; text-align: center; padding: 14px; border: 2px dashed #000; }
+.role-box { border: 2px solid #000; padding: 28px 20px; text-align: center; }
+.role-tag { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.15em; color: #555; margin-bottom: 10px; }
+.role-val { font-size: 2.2rem; font-weight: bold; letter-spacing: 0.15em; }
+.hint { font-size: 0.75rem; color: #666; line-height: 1.6; }
+.err { font-size: 0.78rem; color: #c00; min-height: 1em; }
+.rules-box { border: 1px solid #ccc; padding: 14px; font-size: 0.76rem; line-height: 1.7; color: #333; }
+.rules-box b { color: #000; }
+.waiting { text-align: center; font-size: 0.85rem; color: #555; padding: 8px 0; }
+.dot-anim::after { content: '.'; animation: dots 1.2s steps(3, end) infinite; }
+@keyframes dots { 0% { content: '.'; } 33% { content: '..'; } 66% { content: '...'; } 100% { content: '.'; } }
+.player-count { font-size: 0.78rem; color: #555; text-align: center; }
+</style>
+</head>
+<body>
+<div id="app">
+  <h1>Mafia</h1>
+
+  <div id="s-home" class="screen active">
+    <div class="rules-box">
+      <b>How to play:</b><br>
+      1 player is secretly MAFIA.<br>
+      Everyone else is CREWMATE.<br>
+      Mafia tries to lose without getting caught.<br>
+      Crewmates try to win and spot who's throwing.
+    </div>
+    <div>
+      <label>Your name</label>
+      <input type="text" id="in-name" placeholder="Enter your name" maxlength="14" autocomplete="off" autocorrect="off" spellcheck="false">
+    </div>
+    <button onclick="doCreate()">Create Room</button>
+    <div class="divider">or join</div>
+    <div>
+      <label>Room code</label>
+      <input type="text" id="in-code" placeholder="4-letter code" maxlength="4" style="text-transform:uppercase;letter-spacing:0.2em;font-size:1.3rem" autocomplete="off" autocorrect="off" spellcheck="false">
+    </div>
+    <button class="ghost" onclick="doJoin()">Join Room</button>
+    <div class="err" id="err-home"></div>
+  </div>
+
+  <div id="s-host" class="screen">
+    <p class="hint">Share this code with your friends:</p>
+    <div class="code-big" id="disp-code"></div>
+    <div class="box">
+      <label>Players joined</label>
+      <ul class="player-list" id="host-players"></ul>
+    </div>
+    <p class="player-count" id="host-count"></p>
+    <p class="waiting" id="host-status">Waiting for players<span class="dot-anim"></span></p>
+    <button id="btn-start" onclick="doStart()" style="display:none">Assign Roles</button>
+    <div class="err" id="err-host"></div>
+  </div>
+
+  <div id="s-guest" class="screen">
+    <p class="hint">You joined:</p>
+    <div class="code-big" id="disp-code-guest"></div>
+    <div class="box">
+      <label>Players joined</label>
+      <ul class="player-list" id="guest-players"></ul>
+    </div>
+    <p class="player-count" id="guest-count"></p>
+    <p class="waiting">Waiting for host to start<span class="dot-anim"></span></p>
+  </div>
+
+  <div id="s-role" class="screen">
+    <p class="hint" style="text-align:center">Look at this alone — don't show others</p>
+    <div class="role-box">
+      <div class="role-tag" id="role-tag"></div>
+      <div class="role-val" id="role-val"></div>
+    </div>
+    <button class="ghost" onclick="show('s-ready')">I've seen my role — hide it</button>
+  </div>
+
+  <div id="s-ready" class="screen">
+    <div class="box" style="text-align:center;padding:24px">
+      Game is live.<br><br>
+      Play the game.<br>
+      Figure out who's throwing.
+    </div>
+    <button onclick="doPlayAgain()">Play Again</button>
+  </div>
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getDatabase, ref, set, get, update, onValue, off, remove, query, orderByChild, endAt } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyC6oDnf-gV15C90KhNkrm7aGgLwUlbX2Mw",
+  authDomain: "imposter-game-kph-72602.firebaseapp.com",
+  databaseURL: "https://imposter-game-kph-72602-default-rtdb.firebaseio.com",
+  projectId: "imposter-game-kph-72602",
+  storageBucket: "imposter-game-kph-72602.firebasestorage.app",
+  messagingSenderId: "589210062434",
+  appId: "1:589210062434:web:7cfaa042af90dbf876cb3b"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getDatabase(app);
+
+const MIN_PLAYERS = 4;
+const MAX_PLAYERS = 6;
+
+let myName = '';
+let myCode = '';
+let isHost = false;
+let activeRef = null;
+let activeHandler = null;
+
+window.show = function(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+
+function setErr(id, msg) { document.getElementById(id).textContent = msg; }
+function clearErr(id) { document.getElementById(id).textContent = ''; }
+
+function rand4() {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  return Array.from({length:4}, () => chars[Math.floor(Math.random()*chars.length)]).join('');
+}
+
+function stopListener() {
+  if (activeRef && activeHandler) {
+    off(activeRef, 'value', activeHandler);
+    activeRef = null; activeHandler = null;
+  }
+}
+
+function renderPlayers(listId, countId, players) {
+  const el = document.getElementById(listId);
+  const countEl = document.getElementById(countId);
+  if (!el) return;
+  const names = players ? Object.keys(players) : [];
+  el.innerHTML = names.map((p, i) =>
+    `<li>${p}${i===0 ? ' <span style="font-size:0.7rem;color:#999">(host)</span>' : ''}</li>`
+  ).join('') || '<li style="color:#999">Nobody yet</li>';
+  if (countEl) countEl.textContent = `${names.length} / ${MAX_PLAYERS} players`;
+}
+
+window.doCreate = async function() {
+  myName = document.getElementById('in-name').value.trim();
+  if (!myName) { setErr('err-home', 'Enter your name first.'); return; }
+  clearErr('err-home');
+  myCode = rand4();
+  isHost = true;
+  const roomRef = ref(db, 'mafia_rooms/' + myCode);
+  await set(roomRef, {
+    players: { [myName]: true },
+    status: 'waiting',
+    roles: null,
+    createdAt: Date.now()
+  });
+  document.getElementById('disp-code').textContent = myCode;
+  show('s-host');
+  listenRoom();
+}
+
+window.doJoin = async function() {
+  myName = document.getElementById('in-name').value.trim();
+  const code = document.getElementById('in-code').value.trim().toUpperCase();
+  if (!myName) { setErr('err-home', 'Enter your name first.'); return; }
+  if (code.length !== 4) { setErr('err-home', 'Enter the 4-character room code.'); return; }
+  clearErr('err-home');
+
+  const roomRef = ref(db, 'mafia_rooms/' + code);
+  const snap = await get(roomRef);
+  const room = snap.val();
+
+  if (!room) { setErr('err-home', 'Room not found. Check the code.'); return; }
+  if (room.status === 'roles_assigned') { setErr('err-home', 'Game already started.'); return; }
+  const names = room.players ? Object.keys(room.players) : [];
+  if (names.length >= MAX_PLAYERS) { setErr('err-home', `Room is full (${MAX_PLAYERS}/${MAX_PLAYERS}).`); return; }
+  if (names.includes(myName)) { setErr('err-home', 'That name is taken — try a different one.'); return; }
+
+  myCode = code;
+  isHost = false;
+  await set(ref(db, 'mafia_rooms/' + code + '/players/' + myName), true);
+  document.getElementById('disp-code-guest').textContent = myCode;
+  show('s-guest');
+  listenRoom();
+}
+
+function listenRoom() {
+  stopListener();
+  activeRef = ref(db, 'mafia_rooms/' + myCode);
+  activeHandler = onValue(activeRef, snap => {
+    const room = snap.val();
+    if (!room) return;
+    const names = room.players ? Object.keys(room.players) : [];
+    const count = names.length;
+
+    renderPlayers('host-players', 'host-count', room.players);
+    renderPlayers('guest-players', 'guest-count', room.players);
+
+    if (isHost) {
+      const statusEl = document.getElementById('host-status');
+      const btnStart = document.getElementById('btn-start');
+      if (count < MIN_PLAYERS) {
+        statusEl.innerHTML = `Need ${MIN_PLAYERS - count} more player${MIN_PLAYERS - count > 1 ? 's' : ''} to start<span class="dot-anim"></span>`;
+        btnStart.style.display = 'none';
+      } else {
+        statusEl.textContent = `${count} players ready — good to go!`;
+        btnStart.style.display = 'block';
+      }
+    }
+
+    if (room.status === 'roles_assigned' && room.roles && room.roles[myName]) {
+      stopListener();
+      showRole(room.roles[myName]);
+    }
+  });
+}
+
+window.doStart = async function() {
+  const snap = await get(ref(db, 'mafia_rooms/' + myCode));
+  const room = snap.val();
+  if (!room) { setErr('err-host', 'Room error.'); return; }
+  const names = Object.keys(room.players || {});
+  if (names.length < MIN_PLAYERS) { setErr('err-host', `Need at least ${MIN_PLAYERS} players.`); return; }
+
+  const shuffled = [...names].sort(() => Math.random() - 0.5);
+  const mafiaName = shuffled[0];
+
+  const roles = {};
+  names.forEach(n => { roles[n] = n === mafiaName ? { type: 'mafia' } : { type: 'crewmate' }; });
+  await update(ref(db, 'mafia_rooms/' + myCode), { status: 'roles_assigned', roles });
+}
+
+function showRole(role) {
+  const tag = document.getElementById('role-tag');
+  const val = document.getElementById('role-val');
+  if (role.type === 'mafia') {
+    tag.textContent = 'You are';
+    val.textContent = 'MAFIA';
+  } else {
+    tag.textContent = 'You are a';
+    val.textContent = 'CREWMATE';
+  }
+  show('s-role');
+}
+
+window.doPlayAgain = function() {
+  stopListener();
+  myCode = '';
+  isHost = false;
+  document.getElementById('in-code').value = '';
+  clearErr('err-home');
+  show('s-home');
+}
+
+try {
+  const cutoff = Date.now() - 3 * 60 * 60 * 1000;
+  const old = query(ref(db, 'mafia_rooms'), orderByChild('createdAt'), endAt(cutoff));
+  get(old).then(snap => snap.forEach(c => remove(c.ref))).catch(()=>{});
+} catch(e) {}
+
+</script>
+</body>
+</html>
